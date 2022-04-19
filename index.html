@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Client Side Video</title>
+    <script src="https://unpkg.com/tailwindcss-jit-cdn"></script>
+  </head>
+  <body class="text-center">
+    <div class="flex flex-col justify-center items-center gap-5">
+      <h2>Canvas Animation for refrence</h2>
+      <canvas id="mainCanvas"></canvas>
+    </div>
+    <div class="flex justify-center items-center w-full h-full">
+      <div
+        id="videoSecOne"
+        class="w-full flex flex-col justify-center items-center gap-5"
+      >
+        <h2>
+          Client Side Video Generation ( Fallback Method, No FFMPEG required )
+        </h2>
+        <video id="playerOne" controls autoplay loop muted></video>
+      </div>
+      <div
+        id="videoSecTwo"
+        class="w-full flex flex-col justify-center items-center gap-5"
+      >
+        <h2>Client Side Video Generation ( With FFMPEG )</h2>
+        <video id="playerTwo" controls autoplay loop muted></video>
+      </div>
+    </div>
+
+    <div class="flex justify-center items-center w-full h-full pt-12">
+      <div
+        id="videoSecThree"
+        class="w-full flex flex-col justify-center items-center gap-5"
+      >
+        <h2>Client Side Video Generation From via Files ( FFMPEG required )</h2>
+        <video id="playerThree" controls autoplay loop muted></video>
+        <div class="flex flex-col justify-center items-center gap-5">
+          <p id="message"></p>
+          <button
+            class="bg-transparent hover:bg-blue-500 text-blue-700 font-semibold hover:text-white py-2 px-4 border border-blue-500 hover:border-transparent rounded"
+            id="imageVideoBtn"
+          >
+            Generate Video
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./ffmpeg.min.js"></script>
+    <script>
+      window.requestAnimFrame = (function (callback) {
+        return (
+          window.requestAnimationFrame ||
+          window.webkitRequestAnimationFrame ||
+          window.mozRequestAnimationFrame ||
+          window.oRequestAnimationFrame ||
+          window.msRequestAnimationFrame ||
+          function (callback) {
+            window.setTimeout(callback, 1000 / 60);
+          }
+        );
+      })();
+
+      // Define & Set elements
+      var canvas = document.getElementById("mainCanvas");
+      var context = canvas.getContext("2d");
+      const message = document.getElementById("message");
+      const videoOne = document.getElementById("playerOne");
+      const videoTwo = document.getElementById("playerTwo");
+      const videoThree = document.getElementById("playerThree");
+
+      //Canvas Shotgrab variables
+      var shots = [];
+      var grabLimit = 10; // Number of canvas shots to take
+
+      //Define & Set FFMPEG
+      const { createFFmpeg, fetchFile } = FFmpeg;
+      let ffmpeg = createFFmpeg({
+        corePath: "./ffmpeg-core.js",
+        mainName: "main",
+        log: true,
+      });
+
+      //Canvas Utility Methods
+      const drawRectangle = function (myRectangle, context) {
+        context.fillStyle = "#F8C8DC";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.beginPath();
+        context.rect(
+          myRectangle.x,
+          myRectangle.y,
+          myRectangle.width,
+          myRectangle.height
+        );
+        context.fillStyle = "#8ED6FF";
+        context.fill();
+        context.lineWidth = myRectangle.borderWidth;
+        context.strokeStyle = "black";
+        context.stroke();
+      };
+
+      const animate = function (myRectangle, canvas, context, startTime) {
+        //Grab Canvas shot
+        getCanvasShots(canvas);
+        // update
+        var time = new Date().getTime() - startTime;
+
+        var linearSpeed = 100;
+        // pixels / second
+        var newX = (linearSpeed * time) / 1000;
+
+        if (
+          newX <
+          canvas.width - myRectangle.width - myRectangle.borderWidth / 2
+        ) {
+          myRectangle.x = newX;
+        }
+
+        //clear
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawRectangle(myRectangle, context);
+
+        // request new frame
+        requestAnimFrame(function () {
+          animate(myRectangle, canvas, context, startTime);
+        });
+      };
+
+      const getCanvasShots = function (canvas) {
+        // if (shots.length >= grabLimit) return;
+        var img = canvas.toDataURL("image/png");
+        shots.push(img);
+      };
+
+      //ffmpeg methods
+      const image2video = async () => {
+        message.innerHTML = "Loading ffmpeg-core.js";
+        await ffmpeg.load();
+        message.innerHTML = "Loading data";
+
+        for (let i = 0; i < 19; i += 1) {
+          ffmpeg.FS(
+            "writeFile",
+            `gojo-${i}.png`,
+            await fetchFile(`./assets/gojo-${i}.png`)
+          );
+        }
+        message.innerHTML = "Start transcoding";
+        await ffmpeg.run(
+          "-framerate",
+          "9",
+          "-pattern_type",
+          "glob",
+          "-i",
+          "*.png",
+          "-c:a",
+          "copy",
+          "-shortest",
+          "-c:v",
+          "libx264",
+          "-pix_fmt",
+          "yuv420p",
+          "out.mp4"
+        );
+        const data = ffmpeg.FS("readFile", "out.mp4");
+        for (let i = 0; i < 19; i += 1) {
+          ffmpeg.FS("unlink", `gojo-${i}.png`);
+        }
+
+        videoThree.src = URL.createObjectURL(
+          new Blob([data.buffer], { type: "video/mp4" })
+        );
+        ffmpeg.exit();
+      };
+
+      const canvas2video = async () => {
+        await ffmpeg.load();
+
+        for (let i = 0; i < shots.length; i += 1) {
+          ffmpeg.FS(
+            "writeFile",
+            `shots-${String(i).padStart(3, "0")}.png`,
+            await fetchFile(shots[i])
+          );
+        }
+
+        await ffmpeg.run(
+          "-framerate",
+          "30",
+          "-pattern_type",
+          "glob",
+          "-i",
+          "shots-*.png",
+          "-c:a",
+          "copy",
+          "-shortest",
+          "-c:v",
+          "libx264",
+          "-pix_fmt",
+          "yuv420p",
+          "output.mp4"
+        );
+        const data = ffmpeg.FS("readFile", "output.mp4");
+        for (let i = 0; i < shots.length; i += 1) {
+          ffmpeg.FS("unlink", `shots-${String(i).padStart(3, "0")}.png`);
+        }
+
+        videoTwo.src = URL.createObjectURL(
+          new Blob([data.buffer], { type: "video/mp4" })
+        );
+        ffmpeg.exit();
+      };
+
+      //fallback canvas to video methods || Takes in canvas element & video length
+      const recordCanvas = function (canvas, videoLength) {
+        const recordedChunks = [];
+        const mediaRecorder = new MediaRecorder(canvas.captureStream(25), {
+          mimeType: "video/webm; codecs=vp9",
+        });
+        mediaRecorder.ondataavailable = (event) =>
+          recordedChunks.push(event.data);
+        mediaRecorder.onstop = () => {
+          videoOne.src = URL.createObjectURL(
+            new Blob(recordedChunks, { type: "video/webm" })
+          );
+        };
+        mediaRecorder.start();
+        window.setTimeout(() => {
+          mediaRecorder.stop();
+        }, videoLength);
+      };
+
+      var myRectangle = {
+        x: 0,
+        y: 75,
+        width: 100,
+        height: 50,
+        borderWidth: 5,
+      };
+
+      drawRectangle(myRectangle, context);
+
+      // wait one second before starting animation
+      setTimeout(function () {
+        var startTime = new Date().getTime();
+        animate(myRectangle, canvas, context, startTime);
+      }, 1000);
+
+      setTimeout(async function () {
+        await canvas2video();
+      }, 3000);
+
+      recordCanvas(canvas, 3000);
+
+      document
+        .getElementById("imageVideoBtn")
+        .addEventListener("click", image2video);
+    </script>
+  </body>
+</html>
