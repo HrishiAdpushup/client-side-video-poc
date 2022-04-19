@@ -178,10 +178,10 @@
         ffmpeg.exit();
       };
 
-      const canvas2video = async () => {
+      const canvas2video = async (numberOfFrames, frameRate) => {
         await ffmpeg.load();
 
-        for (let i = 0; i < shots.length; i += 1) {
+        for (let i = 0; i < numberOfFrames; i += 1) {
           ffmpeg.FS(
             "writeFile",
             `shots-${String(i).padStart(3, "0")}.png`,
@@ -191,7 +191,7 @@
 
         await ffmpeg.run(
           "-framerate",
-          "30",
+          `${frameRate}`,
           "-pattern_type",
           "glob",
           "-i",
@@ -206,7 +206,7 @@
           "output.mp4"
         );
         const data = ffmpeg.FS("readFile", "output.mp4");
-        for (let i = 0; i < shots.length; i += 1) {
+        for (let i = 0; i < numberOfFrames; i += 1) {
           ffmpeg.FS("unlink", `shots-${String(i).padStart(3, "0")}.png`);
         }
 
@@ -252,10 +252,12 @@
       }, 1000);
 
       setTimeout(async function () {
-        await canvas2video();
+        let numberOfFrames = shots.length > 180 ? 180 : shots.length;
+        //takes in number of frames & framerate
+        await canvas2video(numberOfFrames, 30);
       }, 3000);
 
-      recordCanvas(canvas, 3000);
+      recordCanvas(canvas, 4000);
 
       document
         .getElementById("imageVideoBtn")
